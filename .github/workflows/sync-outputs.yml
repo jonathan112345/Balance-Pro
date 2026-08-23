@@ -23,58 +23,21 @@ jobs:
           node tests/document-engine.test.js
           node tests/amex-fixtures.test.js
 
-      - name: Wire tested document engine and batch review
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('documents-v6.html')
-          if not p.exists(): raise SystemExit('documents-v6.html missing')
-          s=p.read_text()
-
-          if 'document-engine.js' not in s:
-              s=s.replace('<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>','<script src="document-engine.js?v=20260823c"></script><script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>',1)
-
-          # Prefer the tested parser for OCR lines and statement metadata.
-          s=s.replace("let type=detectType(d.text,d.ratio),source=detectSource(d.text),statementTotalMinor=statementTotal(d.text);","let type=MTDoc.detectType(d.text,d.ratio),source=MTDoc.detectSource(d.text),statementTotalMinor=MTDoc.statementTotal(d.text);",1)
-          s=s.replace("let lines=Object.values(groups).map(a=>a.sort((x,y)=>x.x-y.x).map(x=>x.text).join(' '));return{lines,rows:linesToRows(lines)}","let lines=Object.values(groups).map(a=>a.sort((x,y)=>x.x-y.x).map(x=>x.text).join(' '));return{lines,rows:MTDoc.parseLines(lines,new Date())}",1)
-          s=s.replace("if(p.rows.length<2)p.rows=linesToRows(text.split(/\\r?\\n/));","if(p.rows.length<2)p.rows=MTDoc.parseLines(text.split(/\\r?\\n/),new Date());",1)
-          s=s.replace("all.push(...linesToRows(lines))","all.push(...MTDoc.parseLines(lines,new Date()))",1)
-          s=s.replace("return{text,rows:linesToRows(text.split(/\\r?\\n/)),ratio:1}","return{text,rows:MTDoc.parseLines(text.split(/\\r?\\n/),new Date()),ratio:1}",1)
-
-          css='.batch-review{margin-top:12px;padding:12px;border:1px solid #19d3a744;background:#08262d;border-radius:16px}.batch-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.batch-metrics .metric b{color:#19d3a7}@media(max-width:620px){.batch-metrics{grid-template-columns:1fr 1fr}}'
-          if '.batch-review{' not in s:
-              s=s.replace('</style><script src="document-engine.js',css+'</style><script src="document-engine.js',1)
-
-          batch='''<div class="batch-review"><div class="section-head"><h2>סיכום כל הקבצים שהועלו</h2><span class="eyebrow">אחרי הסרת כפילויות</span></div><div class="batch-metrics"><div class="metric"><span>סה״כ לאישור</span><b id="batchTotal">₪0</b></div><div class="metric"><span>עסקאות ייחודיות</span><b id="batchUnique">0</b></div><div class="metric"><span>כפילויות שסוננו</span><b id="batchDup">0</b></div><div class="metric"><span>הוצאות החודש לאחר אישור</span><b id="monthAfter">₪0</b></div></div><div class="eyebrow" style="margin-top:10px">פירוט כל ההעלאה לפי קטגוריה</div><div class="cats" id="batchCats"></div><div class="eyebrow" style="margin-top:10px">מצב החודש לפי קטגוריה, כולל מה שכבר נשמר ומה שעומד להיכנס</div><div class="cats" id="monthCategoryImpact"></div></div>'''
-          if 'id="batchTotal"' not in s:
-              s=s.replace('<div class="status" id="reconcile"></div><div class="actions">','<div class="status" id="reconcile"></div>'+batch+'<div class="actions">',1)
-
-          old='''function totals(){let d=docs[idx],rows=d?.rows.filter(x=>x.selected)||[],sum=0,map={};rows.forEach(x=>{if(x.type==='transfer')return;let sign=x.type==='refund'?-1:1;sum+=sign*x.amountMinor;map[x.category]=(map[x.category]||0)+sign*x.amountMinor});if(d)d.parsedTotalMinor=sum;$('total').textContent=fmt(Math.max(sum,0));$('queueTotal').textContent=fmt(Math.max(sum,0));$('cats').innerHTML=Object.entries(map).filter(([,n])=>n>0).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`<div class="cat"><span>${esc(c)}</span><b>${fmt(n)}</b></div>`).join('');let r=$('reconcile');if(r){if(d?.statementTotalMinor){let gap=d.statementTotalMinor-sum,ok=Math.abs(gap)<=2;r.innerHTML=ok?`✅ התאמה מלאה לסכום שמופיע בדוח: <b>${fmt(d.statementTotalMinor)}</b>`:`⚠️ בדוח מופיע <b>${fmt(d.statementTotalMinor)}</b>, אבל סכום השורות שנבחרו הוא <b>${fmt(sum)}</b>. פער: <b>${fmt(Math.abs(gap))}</b>. כדאי לבדוק אם שורה חסרה, כפולה או נקראה לא נכון.`}else r.textContent='לא זוהה בדוח סכום רשמי להשוואה. הסכום מחושב מכל השורות שסומנו.'}}'''
-          new='''function totals(){let d=docs[idx],rows=d?.rows.filter(x=>x.selected)||[],sum=0,map={};rows.forEach(x=>{if(x.type==='transfer')return;let sign=x.type==='refund'?-1:1;sum+=sign*x.amountMinor;map[x.category]=(map[x.category]||0)+sign*x.amountMinor});if(d)d.parsedTotalMinor=sum;$('total').textContent=fmt(Math.max(sum,0));$('queueTotal').textContent=fmt(Math.max(sum,0));$('cats').innerHTML=Object.entries(map).filter(([,n])=>n>0).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`<div class="cat"><span>${esc(c)}</span><b>${fmt(n)}</b></div>`).join('');let r=$('reconcile');if(r){if(d?.statementTotalMinor){let gap=d.statementTotalMinor-sum,ok=Math.abs(gap)<=2;r.innerHTML=ok?`✅ התאמה מלאה לסכום שמופיע בדוח: <b>${fmt(d.statementTotalMinor)}</b>`:`⚠️ בדוח מופיע <b>${fmt(d.statementTotalMinor)}</b>, אבל סכום השורות שנבחרו הוא <b>${fmt(sum)}</b>. פער: <b>${fmt(Math.abs(gap))}</b>. כדאי לבדוק אם שורה חסרה, כפולה או נקראה לא נכון.`}else r.textContent='לא זוהה בדוח סכום רשמי להשוואה. הסכום מחושב מכל השורות שסומנו.'}let all=docs.flatMap(x=>(x.rows||[]).filter(y=>y.selected&&!y.duplicate&&y.type!=='transfer')),batch=0,bmap={},dups=docs.reduce((n,x)=>n+(x.rows||[]).filter(y=>y.duplicate).length,0);all.forEach(x=>{let sign=x.type==='refund'?-1:1;batch+=sign*x.amountMinor;bmap[x.category]=(bmap[x.category]||0)+sign*x.amountMinor});let bm=$('batchTotal'),bu=$('batchUnique'),bd=$('batchDup'),bc=$('batchCats');if(bm)bm.textContent=fmt(Math.max(batch,0));if(bu)bu.textContent=all.length;if(bd)bd.textContent=dups;if(bc)bc.innerHTML=Object.entries(bmap).filter(([,n])=>n>0).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`<div class="cat"><span>${esc(c)}</span><b>${fmt(n)}</b></div>`).join('');let ym=today().slice(0,7),existing=st.transactions.filter(t=>t.type==='expense'&&String(t.occurredDate||t.date||'').startsWith(ym)).reduce((n,t)=>n+(t.amountMinor||0),0),batchMonth=all.filter(x=>String(x.date||'').startsWith(ym)).reduce((n,x)=>n+(x.type==='refund'?-x.amountMinor:x.amountMinor),0),after=$('monthAfter');if(after)after.textContent=fmt(Math.max(existing+batchMonth,0));let mt=$('monthCategoryImpact');if(mt){let existingMap={};st.transactions.filter(t=>t.type==='expense'&&String(t.occurredDate||t.date||'').startsWith(ym)).forEach(t=>existingMap[t.category||'אחר']=(existingMap[t.category||'אחר']||0)+(t.amountMinor||0));all.filter(x=>String(x.date||'').startsWith(ym)).forEach(x=>existingMap[x.category]=(existingMap[x.category]||0)+(x.type==='refund'?-x.amountMinor:x.amountMinor));mt.innerHTML=Object.entries(existingMap).filter(([,n])=>n>0).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([c,n])=>`<div class="cat"><span>${esc(c)}</span><b>${fmt(n)}</b></div>`).join('')}}'''
-          if old in s:
-              s=s.replace(old,new,1)
-          elif 'id="batchTotal"' in s and 'let all=docs.flatMap' not in s:
-              raise SystemExit('batch UI added but totals function anchor not found')
-
-          p.write_text(s)
-          print('Batch reconciliation UI wired')
-          PY
-
       - name: Copy current app files to outputs
         run: |
           mkdir -p outputs
-          for file in index.html app.html app.js app-core.js ui.css home-plan.js home-plan.css document-engine.js documents.html documents-v6.html search.html data.html loans.html manifest.json sw.js icon.svg; do
+          for file in index.html app.html app.js app-core.js ui.css home-plan.js home-plan.css document-engine.js documents.html documents-v8.html search.html data.html loans.html manifest.json sw.js icon.svg; do
             if [ -f "$file" ]; then cp "$file" "outputs/$file"; fi
           done
 
-      - name: Commit source fixes and outputs when changed
+      - name: Commit outputs when changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add documents-v6.html outputs/
+          git add outputs/
           if git diff --cached --quiet; then
-            echo "app and outputs already up to date"
+            echo "outputs already up to date"
           else
-            git commit -m "Add batch document reconciliation and monthly impact"
+            git commit -m "Sync tested smart documents v8 to outputs"
             git push
           fi
