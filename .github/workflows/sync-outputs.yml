@@ -23,21 +23,34 @@ jobs:
           node tests/document-engine.test.js
           node tests/amex-fixtures.test.js
 
+      - name: Load restored goals and alerts
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for name in ['index.html','app.html']:
+              p=Path(name)
+              if not p.exists(): continue
+              s=p.read_text()
+              if 'goals-alerts.js' not in s:
+                  s=s.replace('</body>','<script src="goals-alerts.js?v=20260823d"></script></body>')
+                  p.write_text(s)
+          PY
+
       - name: Copy current app files to outputs
         run: |
           mkdir -p outputs
-          for file in index.html app.html app.js app-core.js ui.css home-plan.js home-plan.css document-engine.js documents.html documents-v8.html search.html data.html loans.html manifest.json sw.js icon.svg; do
+          for file in index.html app.html app.js app-core.js ui.css home-plan.js home-plan.css goals-alerts.js document-engine.js documents.html documents-v8.html search.html data.html loans.html manifest.json sw.js icon.svg; do
             if [ -f "$file" ]; then cp "$file" "outputs/$file"; fi
           done
 
-      - name: Commit outputs when changed
+      - name: Commit active files and outputs when changed
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add outputs/
+          git config user.email "4189826+github-actions[bot]@users.noreply.github.com"
+          git add index.html app.html outputs/
           if git diff --cached --quiet; then
-            echo "outputs already up to date"
+            echo "app and outputs already up to date"
           else
-            git commit -m "Sync tested smart documents v8 to outputs"
+            git commit -m "Sync restored MoneyTalks features"
             git push
           fi
